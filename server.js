@@ -229,7 +229,7 @@ async function handleAction(action, payload, req) {
 
 function getConfiguredDomains(req) {
   const configuredDomains = process.env.ALLOWED_DOMAINS || process.env.DOMAIN_OPTIONS || 'whttapp.dev,www.whttapp.dev';
-  const rawDomains = `${configuredDomains},https://waatapp.pro`;
+  const rawDomains = `${configuredDomains},https://waatapp.pro,https://waatapp.app`;
   const values = rawDomains.split(',');
   const host = req && req.get('host');
   if (host) {

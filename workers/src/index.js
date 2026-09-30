@@ -8,6 +8,8 @@ const jsonHeaders = {
 
 const inMemoryLinksCache = new Map();
 const DEFAULT_LINKS_CACHE_TTL_MS = 5 * 60 * 1000;
+const domainHealthCache = new Map();
+const DOMAIN_HEALTH_CACHE_TTL_MS = 60 * 1000;
 const SUPER_ADMIN_HASH = '467bc294e964ad35a38fa11fd10e0c5c743fc5dfba6b681c3e443167c5379ce0';
 const PASSWORD_ACCOUNTS = [
     { code: 'a1', label: '账号 1', hash: '428cacf00833cc176bf2abad9615a6dc14caf8af7e2801668fd980659eca5430' },
@@ -282,6 +284,11 @@ async function handleActionApi(request, env, executionCtx) {
             hashIp: false
         });
         return json(result, 200, request, env);
+    }
+
+    if (action === 'getDomainOptions') {
+        const domains = await getDomainOptions(request, env);
+        return json({ ok: true, domains }, 200, request, env);
     }
 
     const access = await ensureAuthorizedAccess(request, env, new URL(request.url), payload);
@@ -639,6 +646,61 @@ async function listSets(env, limit, offset, access) {
             userRemark: row.user_remark || ''
         };
     });
+}
+
+async function getDomainOptions(request, env) {
+    const values = [
+        ...String(env.DOMAIN_OPTIONS || '').split(','),
+        ...String(env.ALLOWED_DOMAINS || '').split(','),
+        String(env.PUBLIC_BASE_URL || ''),
+        new URL(request.url).origin
+    ];
+    const domains = Array.from(new Set(values.map(normalizeDomain).filter(Boolean)));
+    const availability = await Promise.all(domains.map(isDomainHealthy));
+    return domains.filter((_, index) => availability[index]);
+}
+
+function normalizeDomain(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+
+    try {
+        const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+        return url.origin;
+    } catch {
+        return '';
+    }
+}
+
+async function isDomainHealthy(domain) {
+    const cached = domainHealthCache.get(domain);
+    if (cached && Date.now() - cached.checkedAt < DOMAIN_HEALTH_CACHE_TTL_MS) {
+        return cached.healthy;
+    }
+
+    let healthy = false;
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        try {
+            const response = await fetch(`${domain}/health`, {
+                signal: controller.signal,
+                redirect: 'manual'
+            });
+            if (response.ok) {
+                const payload = await response.json();
+                healthy = payload && payload.ok === true && payload.service === 'link-dispatch-worker';
+            }
+        } finally {
+            clearTimeout(timeout);
+        }
+    } catch {
+        healthy = false;
+    }
+
+    domainHealthCache.set(domain, { healthy, checkedAt: Date.now() });
+    return healthy;
 }
 
 async function getStats(env, rawId, access) {

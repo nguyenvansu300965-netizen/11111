@@ -4,6 +4,7 @@ compatibility_date = "2026-03-28"
 
 [vars]
 PUBLIC_BASE_URL = "https://whatapp.pro"
+DOMAIN_OPTIONS = "https://whatapp.pro"
 ALLOWED_ORIGIN = "https://whatapp.pro"
 ADMIN_PAGE_URL = "https://whatapp.pro/"
 LINKS_CACHE_TTL_SECONDS = "300"

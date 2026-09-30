@@ -689,13 +689,13 @@ https://wa.me/789?text=START" oninput="renderMergeLinkRows()"></textarea>
                 : baseUrl + 'redirect.html#' + id;
         }
 
-        function populateDomainOptions(domains = []) {
+        function populateDomainOptions(domains = [], includeCurrentOrigin = !MIGRATION_CONFIG.useWorker) {
             const select = document.getElementById('mergeDomainSelect');
             if (!select) return;
 
             const loweredDomains = Array.from(new Set(domains.map(domain => String(domain || '').trim()).filter(Boolean)));
             const currentOrigin = window.location.origin;
-            const mergedDomains = Array.from(new Set([currentOrigin, ...loweredDomains]));
+            const mergedDomains = Array.from(new Set([...(includeCurrentOrigin ? [currentOrigin] : []), ...loweredDomains]));
             const previousValue = select.value || '';
 
             select.innerHTML = '<option value="">自动使用当前站点</option>';

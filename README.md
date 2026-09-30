@@ -20,6 +20,8 @@
 5. 如果你要保护后台接口，设置管理员密钥：`npx wrangler secret put ADMIN_TOKEN`
 6. 发布 Worker：`cd workers && npx wrangler deploy`
 
+短链域名请在 `workers/wrangler.toml` 的 `DOMAIN_OPTIONS` 中用逗号分隔配置，例如 `"https://whatapp.pro,https://新域名.example"`。后台会检查每个域名的 `/health`；无法连接到当前 Worker 的旧域名不会出现在域名选择框中。修改后重新发布 Worker。
+
 ### 前端切换
 
 如果你准备把现有 GitHub Pages 管理页接到 Worker：

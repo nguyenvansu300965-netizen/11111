@@ -20,7 +20,7 @@
 5. 如果你要保护后台接口，设置管理员密钥：`npx wrangler secret put ADMIN_TOKEN`
 6. 发布 Worker：`cd workers && npx wrangler deploy`
 
-短链域名请在 `workers/wrangler.toml` 的 `DOMAIN_OPTIONS` 中用逗号分隔配置，例如 `"https://whatapp.pro,https://新域名.example"`。后台会检查每个域名的 `/health`；无法连接到当前 Worker 的旧域名不会出现在域名选择框中。修改后重新发布 Worker。
+短链域名可在 `workers/wrangler.toml` 的 `DOMAIN_OPTIONS`（Worker）或 Railway 的 `ALLOWED_DOMAINS` 环境变量中用逗号分隔配置。后台会自动加入当前访问域名，并检查其他域名的 `/health`；无法连接到当前 Worker 或 Railway 服务的旧域名不会出现在选择框中。更新环境变量后需重新部署对应服务。
 
 ### 前端切换
 

@@ -690,7 +690,7 @@ async function isDomainHealthy(domain) {
             });
             if (response.ok) {
                 const payload = await response.json();
-                healthy = payload && payload.ok === true && payload.service === 'link-dispatch-worker';
+                healthy = payload && payload.ok === true && ['link-dispatch-worker', 'link-dispatch-railway'].includes(payload.service);
             }
         } finally {
             clearTimeout(timeout);

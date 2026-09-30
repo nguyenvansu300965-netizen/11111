@@ -22,6 +22,8 @@ const pool = new Pool({
 
 const STICKY_CACHE_TTL_MS = 5 * 60 * 1000;
 const stickyAssignmentCache = new Map();
+const domainHealthCache = new Map();
+const DOMAIN_HEALTH_CACHE_TTL_MS = 60 * 1000;
 
 // ─── Password helpers (scrypt) ────────────────────────────────────────────────
 
@@ -199,7 +201,7 @@ async function handleAction(action, payload, req) {
     case 'login':
       return handleLogin(payload);
     case 'getDomainOptions':
-      return handleGetDomainOptions();
+      return handleGetDomainOptions(req);
     case 'createSet':
       return handleCreateSet(payload, req);
     case 'listSets':
@@ -225,18 +227,31 @@ async function handleAction(action, payload, req) {
 
 // ─── Domain options ──────────────────────────────────────────────────────────
 
-function getConfiguredDomains() {
+function getConfiguredDomains(req) {
   const rawDomains = process.env.ALLOWED_DOMAINS || process.env.DOMAIN_OPTIONS || 'whttapp.dev,www.whttapp.dev';
+  const values = rawDomains.split(',');
+  const host = req && req.get('host');
+  if (host) {
+    const forwardedProtocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    const protocol = /^https?$/i.test(forwardedProtocol) ? forwardedProtocol : 'https';
+    values.push(`${protocol}://${host}`);
+  }
+
   const seen = new Set();
   const domains = [];
 
-  for (const entry of rawDomains.split(',')) {
+  for (const entry of values) {
     const trimmed = String(entry || '').trim();
     if (!trimmed) continue;
 
-    const normalized = /^https?:\/\//i.test(trimmed)
-      ? trimmed.replace(/\/+$/, '')
-      : `https://${trimmed.replace(/\/+$/, '')}`;
+    let normalized;
+    try {
+      const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') continue;
+      normalized = url.origin;
+    } catch {
+      continue;
+    }
 
     if (!seen.has(normalized)) {
       seen.add(normalized);
@@ -247,11 +262,60 @@ function getConfiguredDomains() {
   return domains;
 }
 
-async function handleGetDomainOptions() {
+async function handleGetDomainOptions(req) {
+  const domains = getConfiguredDomains(req);
+  const currentOrigin = getRequestOrigin(req);
+  const availability = await Promise.all(domains.map(domain =>
+    domain === currentOrigin || isDomainHealthy(domain)
+  ));
+
   return {
     ok: true,
-    domains: getConfiguredDomains()
+    domains: domains.filter((_, index) => availability[index])
   };
+}
+
+function getRequestOrigin(req) {
+  const host = req && req.get('host');
+  if (!host) return '';
+
+  const forwardedProtocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  const protocol = /^https?$/i.test(forwardedProtocol) ? forwardedProtocol : 'https';
+  try {
+    return new URL(`${protocol}://${host}`).origin;
+  } catch {
+    return '';
+  }
+}
+
+async function isDomainHealthy(domain) {
+  const cached = domainHealthCache.get(domain);
+  if (cached && Date.now() - cached.checkedAt < DOMAIN_HEALTH_CACHE_TTL_MS) {
+    return cached.healthy;
+  }
+
+  let healthy = false;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      const response = await fetch(`${domain}/health`, {
+        signal: controller.signal,
+        redirect: 'manual'
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        healthy = payload && payload.ok === true && ['link-dispatch-railway', 'link-dispatch-worker'].includes(payload.service);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    healthy = false;
+  }
+
+  domainHealthCache.set(domain, { healthy, checkedAt: Date.now() });
+  return healthy;
 }
 
 // ─── Auth: register ───────────────────────────────────────────────────────────
